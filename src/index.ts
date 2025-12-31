@@ -2,8 +2,8 @@ import { Hono } from 'hono'
 import { serveStatic } from 'hono/cloudflare-workers'
 
 type Bindings = {
-    DB: D1Database
-    SECRET_KEY: string
+  DB: D1Database
+  SECRET_KEY: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -12,9 +12,9 @@ const app = new Hono<{ Bindings: Bindings }>()
 
 // Convert Buffer/ArrayBuffer to Hex string
 function buf2hex(buffer: ArrayBuffer): string {
-    return [...new Uint8Array(buffer)]
-        .map(x => x.toString(16).padStart(2, '0'))
-        .join('')
+  return [...new Uint8Array(buffer)]
+    .map(x => x.toString(16).padStart(2, '0'))
+    .join('')
 }
 
 // Check if run in an environment that supports web crypto (Cloudflare Workers does)
@@ -27,65 +27,65 @@ const dec = new TextDecoder()
  * Returns IV + Ciphertext concatenated as hex string.
  */
 async function encryptData(plaintext: string, keyBytes: Uint8Array): Promise<string> {
-    const key = await crypto.subtle.importKey(
-        'raw',
-        keyBytes as any,
-        { name: 'AES-GCM' },
-        false,
-        ['encrypt']
-    )
-    const iv = crypto.getRandomValues(new Uint8Array(12)) // 12 bytes IV for GCM
-    const encrypted = await crypto.subtle.encrypt(
-        {
-            name: 'AES-GCM',
-            iv: iv,
-        },
-        key,
-        enc.encode(plaintext)
-    )
+  const key = await crypto.subtle.importKey(
+    'raw',
+    keyBytes as any,
+    { name: 'AES-GCM' },
+    false,
+    ['encrypt']
+  )
+  const iv = crypto.getRandomValues(new Uint8Array(12)) // 12 bytes IV for GCM
+  const encrypted = await crypto.subtle.encrypt(
+    {
+      name: 'AES-GCM',
+      iv: iv,
+    },
+    key,
+    enc.encode(plaintext)
+  )
 
-    // Combine IV + Encrypted Data
-    const combined = new Uint8Array(iv.byteLength + encrypted.byteLength)
-    combined.set(iv, 0)
-    combined.set(new Uint8Array(encrypted), iv.byteLength)
+  // Combine IV + Encrypted Data
+  const combined = new Uint8Array(iv.byteLength + encrypted.byteLength)
+  combined.set(iv, 0)
+  combined.set(new Uint8Array(encrypted), iv.byteLength)
 
-    return buf2hex(combined.buffer)
+  return buf2hex(combined.buffer)
 }
 
 /**
  * Decrypts hex string (IV+Ciphertext) using AES-GCM with a provided key.
  */
 async function decryptData(hexStr: string, keyBytes: Uint8Array): Promise<string> {
-    // Convert hex to Uint8Array
-    const combined = new Uint8Array(
-        hexStr.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16))
+  // Convert hex to Uint8Array
+  const combined = new Uint8Array(
+    hexStr.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16))
+  )
+
+  // Extract IV (first 12 bytes)
+  const iv = combined.slice(0, 12)
+  const data = combined.slice(12)
+
+  const key = await crypto.subtle.importKey(
+    'raw',
+    keyBytes as any,
+    { name: 'AES-GCM' },
+    false,
+    ['decrypt']
+  )
+
+  try {
+    const decrypted = await crypto.subtle.decrypt(
+      {
+        name: 'AES-GCM',
+        iv: iv,
+      },
+      key,
+      data
     )
-
-    // Extract IV (first 12 bytes)
-    const iv = combined.slice(0, 12)
-    const data = combined.slice(12)
-
-    const key = await crypto.subtle.importKey(
-        'raw',
-        keyBytes as any,
-        { name: 'AES-GCM' },
-        false,
-        ['decrypt']
-    )
-
-    try {
-        const decrypted = await crypto.subtle.decrypt(
-            {
-                name: 'AES-GCM',
-                iv: iv,
-            },
-            key,
-            data
-        )
-        return dec.decode(decrypted)
-    } catch (e) {
-        throw new Error('Decryption failed')
-    }
+    return dec.decode(decrypted)
+  } catch (e) {
+    throw new Error('Decryption failed')
+  }
 }
 
 /**
@@ -94,75 +94,75 @@ async function decryptData(hexStr: string, keyBytes: Uint8Array): Promise<string
  * We'll use SHA-256 to ensure it's 32 bytes.
  */
 async function getMasterKey(secret: string): Promise<Uint8Array> {
-    const hash = await crypto.subtle.digest('SHA-256', enc.encode(secret))
-    return new Uint8Array(hash)
+  const hash = await crypto.subtle.digest('SHA-256', enc.encode(secret))
+  return new Uint8Array(hash)
 }
 
 // --- API ---
 
 app.post('/api/share', async (c) => {
-    const text = await c.req.text()
-    if (!text) return c.text('Error: Text required', 400)
-    if (text.length > 1024 * 1024) return c.text('Error: Text too large (>1MB)', 400)
+  const text = await c.req.text()
+  if (!text) return c.text('Error: Text required', 400)
+  if (text.length > 1024 * 1024) return c.text('Error: Text too large (>1MB)', 400)
 
-    // 1. Generate ID and Data Key
-    const id = crypto.randomUUID()
-    const dataKey = crypto.getRandomValues(new Uint8Array(32)) // 256-bit key
+  // 1. Generate ID and Data Key
+  const id = crypto.randomUUID()
+  const dataKey = crypto.getRandomValues(new Uint8Array(32)) // 256-bit key
 
-    // 2. Encrypt Content with Data Key
-    const encryptedContent = await encryptData(text, dataKey)
+  // 2. Encrypt Content with Data Key
+  const encryptedContent = await encryptData(text, dataKey)
 
-    // 3. Store in DB
-    try {
-        await c.env.DB.prepare(
-            'INSERT INTO shares (id, content, created_at) VALUES (?, ?, ?)'
-        ).bind(id, encryptedContent, Date.now()).run()
-    } catch (e) {
-        console.error(e)
-        return c.text('Error: Database error', 500)
-    }
+  // 3. Store in DB
+  try {
+    await c.env.DB.prepare(
+      'INSERT INTO shares (id, content, created_at) VALUES (?, ?, ?)'
+    ).bind(id, encryptedContent, Date.now()).run()
+  } catch (e) {
+    console.error(e)
+    return c.text('Error: Database error', 500)
+  }
 
-    // 4. Encrypt ID+Key with Master Secret
-    const payload = JSON.stringify({ id, key: buf2hex(dataKey.buffer) })
-    const masterKey = await getMasterKey(c.env.SECRET_KEY)
-    const token = await encryptData(payload, masterKey)
+  // 4. Encrypt ID+Key with Master Secret
+  const payload = JSON.stringify({ id, key: buf2hex(dataKey.buffer) })
+  const masterKey = await getMasterKey(c.env.SECRET_KEY)
+  const token = await encryptData(payload, masterKey)
 
-    return c.text(token)
+  return c.text(token)
 })
 
 app.get('/api/retrieve', async (c) => {
-    const token = c.req.query('token')
-    if (!token) return c.text('Error: Token required', 400)
+  const token = c.req.query('token')
+  if (!token) return c.text('Error: Token required', 400)
 
+  try {
+    // 1. Decrypt Token -> ID + Data Key
+    const masterKey = await getMasterKey(c.env.SECRET_KEY)
+    let payloadStr: string;
     try {
-        // 1. Decrypt Token -> ID + Data Key
-        const masterKey = await getMasterKey(c.env.SECRET_KEY)
-        let payloadStr: string;
-        try {
-            payloadStr = await decryptData(token, masterKey)
-        } catch (e) {
-            return c.text('Error: Invalid token', 400)
-        }
-        const { id, key: keyHex } = JSON.parse(payloadStr)
-
-        // 2. Fetch Encrypted Content
-        const result = await c.env.DB.prepare(
-            'SELECT content FROM shares WHERE id = ?'
-        ).bind(id).first<{ content: string }>()
-
-        if (!result) return c.text('Error: Not found', 404)
-
-        // 3. Decrypt Content
-        const keyBytes = new Uint8Array(
-            keyHex.match(/.{1,2}/g)!.map((byte: string) => parseInt(byte, 16))
-        )
-        const content = await decryptData(result.content, keyBytes)
-
-        return c.text(content)
+      payloadStr = await decryptData(token, masterKey)
     } catch (e) {
-        console.error('Retrieve error:', e)
-        return c.text('Error: Decryption failed or system error', 500)
+      return c.text('Error: Invalid token', 400)
     }
+    const { id, key: keyHex } = JSON.parse(payloadStr)
+
+    // 2. Fetch Encrypted Content
+    const result = await c.env.DB.prepare(
+      'SELECT content FROM shares WHERE id = ?'
+    ).bind(id).first<{ content: string }>()
+
+    if (!result) return c.text('Error: Not found', 404)
+
+    // 3. Decrypt Content
+    const keyBytes = new Uint8Array(
+      keyHex.match(/.{1,2}/g)!.map((byte: string) => parseInt(byte, 16))
+    )
+    const content = await decryptData(result.content, keyBytes)
+
+    return c.text(content)
+  } catch (e) {
+    console.error('Retrieve error:', e)
+    return c.text('Error: Decryption failed or system error', 500)
+  }
 })
 
 // --- Frontend ---
@@ -229,11 +229,35 @@ const html = `
       <div class="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
     </div>
 
+    <!-- Curl Usage Section -->
+    <div class="mt-8 pt-6 border-t border-gray-700 text-sm text-gray-400">
+      <h3 class="font-bold text-gray-300 mb-2">⚡️ Curl Usage</h3>
+      <div class="space-y-3">
+        <div>
+          <p class="mb-1 text-xs uppercase tracking-wider">Share:</p>
+          <code class="block bg-gray-900 p-2 rounded border border-gray-700 font-mono select-all overflow-x-auto">
+            curl -X POST -d "Expected content" <span class="origin-text"></span>/api/share
+          </code>
+        </div>
+        <div>
+           <p class="mb-1 text-xs uppercase tracking-wider">Retrieve:</p>
+           <code class="block bg-gray-900 p-2 rounded border border-gray-700 font-mono select-all overflow-x-auto">
+             curl "<span class="origin-text"></span>/api/retrieve?token=TOKEN"
+           </code>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <script>
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get('token');
+    
+    // Set origin for curl examples
+    document.querySelectorAll('.origin-text').forEach(el => {
+        el.textContent = window.location.origin;
+    });
 
     const createSection = document.getElementById('create-section');
     const viewSection = document.getElementById('view-section');
