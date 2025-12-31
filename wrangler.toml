@@ -1,0 +1,20 @@
+name = "workers_share"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+# Variable bindings. These are arbitrary, ad-hoc links between the worker and the external world
+# https://developers.cloudflare.com/workers/platform/environment-variables
+[vars]
+SECRET_KEY = "dev_secret_key_change_me_in_prod_using_wrangler_secret_put"
+
+# Bind a D1 Database. D1 is Cloudflare's native serverless SQL database.
+# https://developers.cloudflare.com/workers/platform/bindings/about-service-bindings
+[[d1_databases]]
+binding = "DB"
+database_name = "share_db"
+database_id = "xxxx-xxxx-xxxx-xxxx" # Placeholder, user needs to create this
+
+# Rules for modules
+[[rules]]
+type = "ESModule"
+globs = ["**/*.js", "**/*.ts"]
